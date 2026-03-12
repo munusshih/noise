@@ -1,7 +1,7 @@
-import { wireControls } from "./controls";
 import { fetchQuakes } from "./quakes";
-import { startVisualizer } from "./visualizer";
+import { initOverlayPanels } from "./overlay-panels";
+import { initTrackBoard } from "./track-ui";
 
-wireControls();
-startVisualizer();
-fetchQuakes();
+initTrackBoard();
+initOverlayPanels();
+void fetchQuakes();

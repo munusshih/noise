@@ -1,0 +1,381 @@
+---
+const pipeline = [
+  {
+    no: "01",
+    title: "Track state 先定義翻譯器",
+    code: "Track",
+    body:
+      "每條軌道先決定 `dataSource`, `soundMode`, `dataMode`, `waveform`, `pitch`, `speed`, `outputChannel`。這些欄位不是 UI 裝飾，而是整個 sonification contract。",
+  },
+  {
+    no: "02",
+    title: "Loader 把外部 API 壓成同一種語言",
+    code: "SourceDatum",
+    body:
+      "`track-datasource.ts` 把每個來源整理成同型資料：`inputValue`, `norm`, `baseFrequency`, `metrics`, `context`, `sourceMode`。不同 API 先在這裡被去異質化。",
+  },
+  {
+    no: "03",
+    title: "資料欄位被翻成完整聲音事件",
+    code: "SynthesisFrame",
+    body:
+      "`_buildSynthesisFrame()` 不只算 pitch，它一次生成 `amplitude`, `frequency`, `phase`, `offset`, `duration`, `envelopeAttack`, `envelopeRelease`, `modulationRate`, `modulationDepth`。",
+  },
+  {
+    no: "04",
+    title: "Web Audio engine 產生聲音並分配輸出",
+    code: "AudioContext -> ChannelMergerNode",
+    body:
+      "每條 track 的 `gainNode -> analyser -> merger[channel] -> destination` 形成獨立聲音鏈。這一步才把資料翻譯變成可聽訊號。",
+  },
+  {
+    no: "05",
+    title: "視覺層讀的是同一套 runtime",
+    code: "TrackRuntime",
+    body:
+      "`track-visualizer.ts` 不是自己算假圖，而是讀 `dataBuffer`, `synthBuffer`, `AnalyserNode` 與 `latestMapping`，所以畫面與實際聲音共用同一個 runtime state。",
+  },
+];
+
+const modules = [
+  {
+    file: "track-state.ts",
+    role: "shared schema",
+    detail:
+      "定義 `DataSourceId`, `Track`, `TrackRuntime`, `InputMetric`, `SynthesisFrame`。這是所有模組共享的語意底板。",
+  },
+  {
+    file: "track-ui.ts",
+    role: "DOM bridge",
+    detail:
+      "建立 track cards、綁定按鈕與 select、同步 channel count、把使用者操作寫回 state，再呼叫 engine / datasource。",
+  },
+  {
+    file: "track-datasource.ts",
+    role: "source loop + synth translation",
+    detail:
+      "負責 fetch、cache、`live -> snapshot fallback`、`SourceDatum` 建構、`SynthesisFrame` mapping，並決定 `discrete` / `continuous` 的發聲方式。",
+  },
+  {
+    file: "track-engine.ts",
+    role: "multi-channel routing",
+    detail:
+      "lazy 建立 `AudioContext`，讀 `destination.maxChannelCount`，設定 `explicit + discrete`，然後用 `ChannelMergerNode` 做硬式聲道分派。",
+  },
+  {
+    file: "track-visualizer.ts",
+    role: "runtime renderer",
+    detail:
+      "把來源資料、參數歷史和真實輸出 waveform 畫成不同 canvas，讓 mapping 不是黑箱。",
+  },
+];
+
+const targets = [
+  {
+    name: "amplitude",
+    detail: "決定整體推力與壓力感，通常由 `mag`, `aqi`, `bodyLen`, `mass` 這類主量值驅動。",
+  },
+  {
+    name: "frequency",
+    detail: "主音高中心；會再被 `pitch` 做 semitone scaling，所以資料值和使用者控制同時作用。",
+  },
+  {
+    name: "phase",
+    detail: "讓事件在時間上帶有偏移或抖動，常用於 age、day、minute 這種時標欄位。",
+  },
+  {
+    name: "offset",
+    detail: "透過 `ConstantSourceNode` 注入 DC-like bias，讓聲音不是永遠以零中心震動。",
+  },
+  {
+    name: "duration + envelope",
+    detail: "控制事件停留時間、起音與收尾速度，讓同一數據可以是刺點，也可以是拖曳雲層。",
+  },
+  {
+    name: "modulation",
+    detail: "由 `LFO` 完成，`modulationRate` 與 `modulationDepth` 會把資料變成顫動、擺動、粗糙度。",
+  },
+];
+
+const compare = [
+  {
+    title: "discrete mode",
+    code: "event-based synthesis",
+    points: [
+      "每筆資料都建立新的 `OscillatorNode`, `GainNode`, `LFO`, `ConstantSourceNode`。",
+      "比較像 note / gesture 序列，資料事件感很清楚。",
+      "適合 earthquake、rain、GDELT 這種一筆一筆讀起來比較有節點感的來源。",
+    ],
+  },
+  {
+    title: "continuous mode",
+    code: "morphing voice",
+    points: [
+      "保留一組長存 `continuousVoice`，新資料只用 `setTargetAtTime()` 平滑更新參數。",
+      "聽感比較像同一個聲體在變形，而不是連續敲出新 note。",
+      "特別適合 AQI、weather、campus scan 這種慢速場域型資料。",
+    ],
+  },
+];
+
+const resilience = [
+  "所有 source loop 先跑 `primaryLoader()`；如果資料為空或 fetch 失敗，再退回 `fallbackLoader()`。",
+  "`SNAPSHOT_KEY = noise.track.snapshots.v1` 會把最近可播的 live 資料存進 `localStorage`，展演時比較不容易整條靜音。",
+  "每個 loader 都有自己的 cache TTL，避免把 API 當作每個 audio tick 都要重新請求的即時串流。",
+  "播放列表走到尾端時才 refresh 下一批資料，減少 network 抖動直接打斷聲音。",
+];
+
+const routing = [
+  "`AudioContext` 只有在真正播放時才建立，避免頁面載入就觸發 autoplay 限制。",
+  "建立後才讀 `destination.maxChannelCount`，並保守上限到 `8` 聲道。",
+  "`destination.channelCountMode = explicit` 與 `channelInterpretation = discrete` 讓 browser 走的是 channel routing，不是 stereo pan。",
+  "`rerouteTrack()` 會把既有 `AnalyserNode` 從 merger 拔下，再接去新的 output input。",
+];
+
+const rich = (value: string): string => value.replace(/`([^`]+)`/g, "<code>$1</code>");
+---
+
+<section class="overlay-panel" id="architecture-panel" aria-hidden="true">
+  <button
+    class="overlay-panel-backdrop"
+    type="button"
+    data-overlay-close
+    aria-label="Close system notes"></button>
+
+  <div class="overlay-panel-shell">
+    <header class="overlay-panel-head">
+      <div>
+        <div class="control-label">system atlas / 系統說明</div>
+        <p>不是長篇 markdown，而是依資料流、routing、synthesis、fallback 拆開讀。用真實模組名對照實作。</p>
+      </div>
+      <button class="btn overlay-panel-close" type="button" data-overlay-close>
+        關閉 / Close
+      </button>
+    </header>
+
+    <div class="overlay-panel-body">
+      <article class="overlay-panel-content">
+        <div class="notes-layout notes-layout--system">
+          <aside class="notes-aside">
+            <div class="notes-panel-shell">
+              <div class="control-label">core claim / 核心判讀</div>
+              <h2>Not speaker identification</h2>
+              <p>
+                這個專案做的其實不是「辨識哪一顆喇叭叫什麼名字」，而是讀出目前
+                <code>audio output device</code> 可提供的 <code>output channels</code>，
+                再把每條 track 做 <code>discrete channel routing</code>。
+              </p>
+              <div class="notes-chip-row">
+                <span class="notes-chip"><code>SourceDatum -> SynthesisFrame</code></span>
+                <span class="notes-chip"><code>ChannelMergerNode</code></span>
+                <span class="notes-chip"><code>live -> snapshot</code></span>
+              </div>
+            </div>
+
+            <nav class="notes-panel-shell notes-nav" aria-label="System sections">
+              <div class="control-label">index / 索引</div>
+              <a href="#system-overview">
+                <span>Overview</span>
+                <small>資料流與 routing</small>
+              </a>
+              <a href="#system-pipeline">
+                <span>Pipeline</span>
+                <small>五段資料到聲音流程</small>
+              </a>
+              <a href="#system-modules">
+                <span>Modules</span>
+                <small>關鍵程式檔角色</small>
+              </a>
+              <a href="#system-synthesis">
+                <span>Synthesis</span>
+                <small>參數、mode 與 offset</small>
+              </a>
+              <a href="#system-resilience">
+                <span>Resilience</span>
+                <small>cache、snapshot、runtime</small>
+              </a>
+            </nav>
+          </aside>
+
+          <div class="notes-content system-atlas">
+            <section class="system-section" id="system-overview">
+              <div class="system-hero">
+                <div class="system-hero-copy">
+                  <div class="control-label">overview / 總覽</div>
+                  <h2>How the project actually works</h2>
+                  <p>
+                    這個作品不是把一個 API 數值粗暴接到一顆 <code>oscillator</code>。
+                    它比較像一台 <code>multi-track data sonification engine</code>：
+                    每條軌道有自己的資料來源、翻譯規則、聲音模式、輸出聲道與可視化 runtime。
+                  </p>
+                </div>
+
+                <div class="system-route-diagram" aria-label="System route diagram">
+                  <div class="system-route-node">
+                    <strong>API / Snapshot</strong>
+                    <span>earthquake, AQI, weather, archives</span>
+                  </div>
+                  <div class="system-route-arrow">→</div>
+                  <div class="system-route-node">
+                    <strong>SourceDatum</strong>
+                    <span>normalized metrics + context</span>
+                  </div>
+                  <div class="system-route-arrow">→</div>
+                  <div class="system-route-node">
+                    <strong>SynthesisFrame</strong>
+                    <span>amp / freq / phase / offset / env / mod</span>
+                  </div>
+                  <div class="system-route-arrow">→</div>
+                  <div class="system-route-node">
+                    <strong>Web Audio</strong>
+                    <span>gain, analyser, merger, destination</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="system-card-grid">
+                <article class="system-card system-card--emphasis">
+                  <h4>Speaker detection 其實是 channel count</h4>
+                  <p>
+                    <code>getAudioContext()</code> 建立後才讀 <code>destination.maxChannelCount</code>。
+                    App 能知道的是「目前輸出最多有幾個 channel」，而不是裝置品牌或實體 speaker 名稱。
+                  </p>
+                </article>
+                <article class="system-card">
+                  <h4>Routing path</h4>
+                  <div class="system-route-stack">
+                    <span><code>source</code></span>
+                    <span><code>GainNode</code></span>
+                    <span><code>AnalyserNode</code></span>
+                    <span><code>ChannelMergerNode[input = outputChannel]</code></span>
+                    <span><code>destination</code></span>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="system-section" id="system-pipeline">
+              <div class="system-section-head">
+                <div>
+                  <div class="control-label">pipeline / 流程</div>
+                  <h2>資料怎麼被翻成聲音</h2>
+                </div>
+                <p>依真正的執行順序拆成五步，方便對照程式碼與 UI 行為。</p>
+              </div>
+
+              <div class="system-flow">
+                {pipeline.map(step => (
+                  <article class="system-step">
+                    <div class="system-step-no">{step.no}</div>
+                    <div class="system-step-code">{step.code}</div>
+                    <h4>{step.title}</h4>
+                    <p set:html={rich(step.body)}></p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section class="system-section" id="system-modules">
+              <div class="system-section-head">
+                <div>
+                  <div class="control-label">modules / 模組</div>
+                  <h2>主要檔案各自負責什麼</h2>
+                </div>
+                <p>把 UI、資料、音訊與視覺層切開，避免所有邏輯擠在同一個 file。</p>
+              </div>
+
+              <div class="system-card-grid">
+                {modules.map(module => (
+                  <article class="system-card">
+                    <h4>{module.file}</h4>
+                    <div class="system-card-code">{module.role}</div>
+                    <p set:html={rich(module.detail)}></p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section class="system-section system-section--split" id="system-synthesis">
+              <div class="system-panel-column">
+                <div class="system-section-head">
+                  <div>
+                    <div class="control-label">routing / 聲道</div>
+                    <h2>How channel routing works</h2>
+                  </div>
+                  <p>每條 track 都是 mono source，但輸出位置由 merger input 決定。</p>
+                </div>
+
+                <div class="system-card-grid">
+                  {routing.map(point => (
+                    <article class="system-card">
+                      <p set:html={rich(point)}></p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div class="system-panel-column">
+                <div class="system-section-head">
+                  <div>
+                    <div class="control-label">synthesis / 參數</div>
+                    <h2>主要聲音目標</h2>
+                  </div>
+                  <p>每個 source 不是只映射一個 pitch，而是一次控制整包 synthesis targets。</p>
+                </div>
+
+                <div class="system-card-grid">
+                  {targets.map(target => (
+                    <article class="system-card">
+                      <h4>{target.name}</h4>
+                      <p set:html={rich(target.detail)}></p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section class="system-section">
+              <div class="system-section-head">
+                <div>
+                  <div class="control-label">modes / 模式</div>
+                  <h2>`discrete` vs `continuous`</h2>
+                </div>
+                <p>兩種聲音模式其實代表兩種資料時間觀：event sequence 與 field morphing。</p>
+              </div>
+
+              <div class="system-compare">
+                {compare.map(mode => (
+                  <article class="system-compare-card">
+                    <div class="system-card-code">{mode.code}</div>
+                    <h4>{mode.title}</h4>
+                    <ul class="source-list">
+                      {mode.points.map(point => <li set:html={rich(point)}></li>)}
+                    </ul>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section class="system-section" id="system-resilience">
+              <div class="system-section-head">
+                <div>
+                  <div class="control-label">resilience / 韌性</div>
+                  <h2>為什麼 API 掛掉時不會整條失聲</h2>
+                </div>
+                <p>這一層決定它比較像展演系統，而不是 fragile demo。</p>
+              </div>
+
+              <div class="system-card-grid">
+                {resilience.map(point => (
+                  <article class="system-card">
+                    <p set:html={rich(point)}></p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>

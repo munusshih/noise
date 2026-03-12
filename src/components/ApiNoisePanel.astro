@@ -1,0 +1,465 @@
+---
+import SourceFigure from "./SourceFigure.astro";
+
+interface SourceCard {
+  title: string;
+  subtitle: string;
+  figure: string;
+  scope: string;
+  access: string;
+  cadence: string;
+  endpoint: string;
+  fields: string[];
+  mapping: string;
+  facts: string[];
+  context: string;
+  ecology: string;
+}
+
+interface ScaleSection {
+  id: string;
+  title: string;
+  range: string;
+  intro: string;
+  sources: SourceCard[];
+}
+
+const rich = (value: string): string => value.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+const sections: ScaleSection[] = [
+  {
+    id: "site",
+    title: "1. Site / Campus",
+    range: "單點建築層級 / fixed-site footprint",
+    intro:
+      "從最小尺度開始，這一層把一個校園視為可聆聽的微型生態。重點不是即時事件，而是空間座標、命名與日內時間如何把建築轉成慢速聲學掃描。",
+    sources: [
+      {
+        title: "台大建物 / NTU Buildings",
+        subtitle: "campus geometry as temporal scan",
+        figure: "ntu",
+        scope: "單一校園 / single-campus map",
+        access: "direct WFS -> GeoJSON",
+        cadence: "15 min cache + local minute clock",
+        endpoint:
+          "https://map.ntu.edu.tw/geontupublic/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=ntu_build_name&maxFeatures=600&outputFormat=application/json",
+        fields: ["x", "y", "minuteOfDay"],
+        mapping:
+          "x -> frequency / offset, y -> phase / modulation, minuteOfDay -> amplitude / duration / envelope",
+        facts: [
+          "這不是 occupancy sensor；它抓的是固定建物圖層，所以聲音反映的是 campus layout 與命名結構。",
+          "loader 先找地圖中心附近的 anchor building，再把當下本地時間的 `minuteOfDay` 注入，讓靜態地圖有時間性。",
+          "X/Y 範圍會先依資料集 extents 做 normalization，所以聲音在不同建物座標尺度下仍可比較。",
+        ],
+        context:
+          "這一源把 architecture 當成慢速運轉的機器。你聽到的不是人在做什麼，而是空間本身如何規訓移動、停留與注意力。",
+        ecology:
+          "最小尺度；它建立了本作品的 ground condition，讓後面所有城市、島嶼與全球資料都能被比較。",
+      },
+    ],
+  },
+  {
+    id: "urban",
+    title: "2. Urban / City Instrumentation",
+    range: "街區到城市站網 / district-to-city range",
+    intro:
+      "第二層進入都市儀表化。這裡的聲音不只是環境值，也包含 station placement、zone classification、proxy access 與城市治理的取樣方式。",
+    sources: [
+      {
+        title: "台北噪音站 / Taipei Noise Stations",
+        subtitle: "station geography and noise zoning",
+        figure: "noise",
+        scope: "台北市站點網 / city station inventory",
+        access: "CSV via AllOrigins proxy",
+        cadence: "60 min cache + local minute tick",
+        endpoint:
+          "https://data.taipei/.../resource.download?rid=ac5e1557-5590-4bec-8709-e5f0f8d4bd1e",
+        fields: ["zone", "lon", "minute", "stationId"],
+        mapping:
+          "zone -> amplitude / duration, lon -> frequency / phase, minute -> offset / modulation / envelope, stationId -> phase",
+        facts: [
+          "目前 loader 讀的是 station CSV inventory，而不是每秒更新的 decibel stream；也就是說它更偏向監測地理學，而非聲壓本身。",
+          "`zoneRaw` 會被折成幾個治理等級，用來控制力度與事件長度，讓分區制度變成可聽見的節奏。",
+          "為了避開跨站隨機跳動，系統會保留一個 anchor station，讓這條 track 聽起來像穩定巡航而不是亂數掃描。",
+        ],
+        context:
+          "這一源最有意思的地方是它把『誰被量測、在哪裡量測』本身做成內容。城市噪音在這裡是一套監管版圖，不只是分貝值。",
+        ecology:
+          "城市尺度；站點密度、道路鄰接與行政分類共同決定聲音性格。",
+      },
+      {
+        title: "台北雨量 / Taipei Rain",
+        subtitle: "rainfall as drainage and weather pulse",
+        figure: "rain",
+        scope: "都市雨量站 / municipal hydrology",
+        access: "JSON via AllOrigins wrapper",
+        cadence: "60 sec cache",
+        endpoint:
+          "https://wic.heo.taipei/OpenData/API/Rain/Get?stationNo=&loginId=open_rain&dataKey=85452C1D",
+        fields: ["rain", "stationNo", "recTime"],
+        mapping:
+          "rain -> amplitude / frequency, stationNo -> phase / offset, recTime -> duration / modulation / envelope",
+        facts: [
+          "這是少數真正接近 event intensity 的城市資料源，`rain` 直接提供毫米值，所以音量與 pitch 會跟降雨量一起起伏。",
+          "station number 不是無意義 ID；它在這裡被拿來當 routing personality，讓不同站點帶出不同相位與偏壓。",
+          "`recTime` 會被拆成 minute，使降雨不只決定『多大』，也決定 envelope 與 modulation 的時間性。",
+        ],
+        context:
+          "都市雨量把自然現象和基礎設施綁在一起。你聽到的同時是天氣、排水系統和城市表面的承載壓力。",
+        ecology:
+          "城市水文尺度；非常適合和噪音站、AQI 互相比較同一個城市如何被不同制度描繪。",
+      },
+    ],
+  },
+  {
+    id: "regional",
+    title: "3. Regional / Island Envelope",
+    range: "島嶼與近域大氣 / island-scale environmental field",
+    intro:
+      "第三層把焦點放大到台灣與其附近的大氣、污染和地殼活動。這裡開始出現 forecast model、官方環境資料與區域地震窗口的並置。",
+    sources: [
+      {
+        title: "台灣 AQI / Taiwan AQI",
+        subtitle: "MOENV station network anchored to one site",
+        figure: "taiwan-aqi",
+        scope: "台灣環境監測 / island AQI network",
+        access: "direct MOENV JSON",
+        cadence: "30 min cache",
+        endpoint:
+          "https://data.moenv.gov.tw/api/v2/aqx_p_432?...&sort=ImportDate desc&format=json",
+        fields: ["aqi", "pm2.5", "o3_8hr", "pm10", "publishtime"],
+        mapping:
+          "aqi -> amplitude / frequency, pm2.5 -> offset / envelope, o3_8hr -> modulation / phase, publishtime -> duration, pm10 -> phase",
+        facts: [
+          "目前 loader 會優先挑 `臺北市 / 新北市` 作 anchor，如果沒有才退回其他縣市，所以它是台灣網路中的單站聚焦，不是全站同播。",
+          "`aqi`, `PM2.5`, `O3(8h)`, `PM10` 同時存在，讓這個 source 可以把污染拆成不同聲學維度，而不是一個總分而已。",
+          "當 live 拉回有效資料時，系統會把結果存進 `localStorage snapshot store`，因此展演時能在斷網後續播。",
+        ],
+        context:
+          "這裡的聲音是慢性暴露，不是瞬時災變。空污聽起來常常比地震更黏、更持續，因為它原本就是一種長期背景條件。",
+        ecology:
+          "島嶼尺度；人體暴露、政策監測與區域氣流在同一條資料軌裡相遇。",
+      },
+      {
+        title: "氣象模型 / Open-Meteo",
+        subtitle: "forecast model over Taipei coordinates",
+        figure: "open-meteo",
+        scope: "區域天氣模型 / modelled atmosphere",
+        access: "direct Open-Meteo API",
+        cadence: "30 min cache, 2-day hourly window",
+        endpoint:
+          "https://api.open-meteo.com/v1/forecast?latitude=25.0376&longitude=121.5637&hourly=temperature_2m,precipitation,wind_speed_10m&forecast_days=2&timezone=Asia/Taipei",
+        fields: ["temperature_2m", "precipitation", "wind_speed_10m"],
+        mapping:
+          "temperature -> frequency / amplitude, precipitation -> offset / envelope, wind -> modulation / duration / phase",
+        facts: [
+          "這不是實體 weather station，而是數值預報模型，因此它更像 environment simulation than direct measurement。",
+          "一次抓回最多 48 到 72 個 hour slots，這些 slot 會被排成列表 source，所以你會聽到 forecast horizon 的連續推進。",
+          "wind speed 被放進 modulation 與 duration，所以這個 source 的 movement 感通常來自風，而不是雨量本身。",
+        ],
+        context:
+          "Open-Meteo 把城市放進更大的 atmosphere field。它提供的是一種模型化未來，使聲音帶有『即將發生』的預期感。",
+        ecology:
+          "區域大氣尺度；非常適合與城市雨量和 AQI 疊聽，辨認 sensor 與 model 的差異。",
+      },
+      {
+        title: "台灣地震窗 / Taiwan Regional Quakes",
+        subtitle: "USGS FDSN filtered to Taiwan bounds",
+        figure: "regional-quake",
+        scope: "台灣及近海地殼活動 / regional seismic window",
+        access: "direct USGS FDSN GeoJSON",
+        cadence: "6 min cache, rolling 36h query",
+        endpoint:
+          "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minlatitude=21&maxlatitude=26&minlongitude=119&maxlongitude=123...",
+        fields: ["mag", "depth", "ageHours"],
+        mapping:
+          "mag -> amplitude / frequency / duration, depth -> envelope / offset, age -> phase / modulation",
+        facts: [
+          "雖然 UI label 寫 `CWA`，目前實作其實是 `USGS FDSN` 加上台灣 bounding box，不是中央氣象署官方 feed。",
+          "query window 只看最近 36 小時，並保留最新 120 筆事件，所以它比較像區域活動密度切片。",
+          "和全球地震 source 共用同一套 seismic mapping，因此你能直接比較全球與台灣尺度的壓縮差異。",
+        ],
+        context:
+          "把地震收斂到台灣窗口後，它不再只是全球災難新聞，而更像島嶼日常底噪。區域尺度會把頻繁但較小的事件帶回前景。",
+        ecology:
+          "島嶼地殼尺度；比全球 quake 更貼近地方性震動節律。",
+      },
+    ],
+  },
+  {
+    id: "global",
+    title: "4. Network / Global Systems",
+    range: "跨城、跨國與全球事件層 / translocal-to-global networks",
+    intro:
+      "第四層進入全球網路與世界事件。資料不再只是地理環境，也包含媒體時間線、跨城市感測基礎設施，以及 app 內部共享的地震快取。",
+    sources: [
+      {
+        title: "亞洲 AQI / WAQI Asia",
+        subtitle: "cross-city search, not one single station network",
+        figure: "waqi",
+        scope: "亞洲城市搜尋 / transnational urban comparison",
+        access: "WAQI search with demo token",
+        cadence: "12 min cache",
+        endpoint: "https://api.waqi.info/search/?token=demo&keyword=Asia",
+        fields: ["aqi", "uid", "time", "station.country"],
+        mapping:
+          "aqi -> amplitude / frequency, uid -> phase / offset, minute -> duration / modulation / envelope",
+        facts: [
+          "這個 source 用的是 `search` + `demo token`，因此它比較像 exploratory sampler，而不是穩定、完整的官方 long-term archive。",
+          "loader 會先過濾 `TW / KR / IN / TH / ID / PH / JP / VN` 等國別，保留亞洲城市之間的可比較橫切面。",
+          "`uid` 被拿來充當 identity-like metric，讓城市之間除了污染值，也帶有不同的 routing fingerprint。",
+        ],
+        context:
+          "WAQI 在這裡不是要告訴你哪裡最糟，而是讓跨城比較本身變得可聽。它暴露的是全球都市環境資料如何被同一個平台拼接。",
+        ecology:
+          "跨城市網路尺度；它把各地 AQI 拉到一個共同平台上，使地區差異變成節奏與調變差異。",
+      },
+      {
+        title: "全球地震 / USGS Global Earthquakes",
+        subtitle: "shared seismic cache for all-day events",
+        figure: "global-quake",
+        scope: "全球地震事件 / planet-wide seismic feed",
+        access: "app cache fed by quakes.ts",
+        cadence: "all_day refresh upstream, then track playback from local state",
+        endpoint:
+          "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
+        fields: ["mag", "depth", "ageHours"],
+        mapping:
+          "mag -> amplitude / frequency / duration, depth -> envelope / offset, age -> phase / modulation",
+        facts: [
+          "這個 source 不是每條 track 自己 fetch；它讀的是 `state.quakes`，而 `quakes.ts` 先把 `all_day.geojson` 取回後共享給整個 app。",
+          "上游 quake list 目前保留約 80 筆事件，再由 track loop 按時間排序回放，因此播放成本比重複請求低很多。",
+          "`magToFreq` 先在 quake fetch 階段做了一次頻率預估，讓全球地震有自己的 base pitch spine。",
+        ],
+        context:
+          "全球地震是一個 planet-scale stress monitor。當它和城市或島嶼資料放在一起時，會讓地方聲音看起來像更大構造運動中的局部擾動。",
+        ecology:
+          "行星地殼尺度；是整個資料地圖中最明顯的 physical global layer。",
+      },
+      {
+        title: "事件時間線 / GDELT",
+        subtitle: "media volume as geopolitical atmosphere",
+        figure: "gdelt",
+        scope: "全球事件可見度 / media-event field",
+        access: "direct GDELT TimelineVolRaw",
+        cadence: "20 min cache",
+        endpoint:
+          "https://api.gdeltproject.org/api/v2/doc/doc?query=protest OR strike OR demonstration&mode=TimelineVolRaw&format=json",
+        fields: ["count", "dayIndex", "dayOfMonth"],
+        mapping:
+          "count -> amplitude / frequency, dayIndex -> phase / duration, dayOfMonth -> offset / modulation / envelope",
+        facts: [
+          "query 現在鎖定 `protest OR strike OR demonstration`，因此它反映的是被媒體抓到的特定政治詞彙時間線。",
+          "`TimelineVolRaw` 不是單篇文章，而是 volume curve；聲音對應的是可見度與聚集程度，而非事件敘事內容。",
+          "這是少數幾個完全不是自然感測器的來源，它把資訊基礎設施本身當成環境層。",
+        ],
+        context:
+          "GDELT 讓『世界事件』變成一個可聽的氣候。它並不等於真實發生的總量，而是某種被平台與媒體選中的回聲。",
+        ecology:
+          "全球資訊生態尺度；它讓政治語言成為一種可與地震、空污並排的噪音層。",
+      },
+    ],
+  },
+  {
+    id: "cosmic",
+    title: "5. Planetary / Cosmic",
+    range: "太陽系到深空 / heliophysics to deep-space archives",
+    intro:
+      "最後一層把地球外資料納入同一個聲音系統。這裡的『生態』不是狹義自然環境，而是地球技術如何與太空事件、宇宙敘事與遠距資料庫相連。",
+    sources: [
+      {
+        title: "太空天氣 / NASA DONKI",
+        subtitle: "notification stream for heliophysical events",
+        figure: "donki",
+        scope: "太陽擾動通知 / operational space weather",
+        access: "NASA DEMO_KEY notifications",
+        cadence: "20 min cache, 14-day window",
+        endpoint:
+          "https://api.nasa.gov/DONKI/notifications?api_key=DEMO_KEY&startDate=...&endDate=...",
+        fields: ["messageBody length", "messageType hash", "issueTime"],
+        mapping:
+          "body length -> amplitude / frequency, age -> duration / envelope, type hash -> offset / modulation, minute -> phase",
+        facts: [
+          "DONKI 在這裡讀的是 notifications，不是原始 physical instrument stream，所以它是 space weather 經過 operational messaging 後的形態。",
+          "message type 先被 hash 成數值，用來建立不同 alert 類型的 timbral identity。",
+          "資料窗只看最近 14 天，讓這條軌道維持『最近擾動』而不是歷史檔案回放。",
+        ],
+        context:
+          "這個 source 告訴你：太空事件進入地球系統時，往往不是直接以粒子或磁場的形式被感知，而是先變成通知、風險與操作語言。",
+        ecology:
+          "行星技術尺度；它是地球基礎設施與太陽活動之間的接口層。",
+      },
+      {
+        title: "宇宙敘事 / NASA APOD",
+        subtitle: "astronomy storytelling as data surface",
+        figure: "apod",
+        scope: "宇宙圖像與文字 / daily astronomical narrative",
+        access: "NASA DEMO_KEY APOD range query",
+        cadence: "60 min cache, 30-day window",
+        endpoint:
+          "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&start_date=...&end_date=...",
+        fields: ["explanation length", "title length", "day", "media_type hash"],
+        mapping:
+          "explanation -> amplitude / duration, title -> frequency / envelope, day -> phase / modulation, media_type -> offset",
+        facts: [
+          "APOD 不是物理量測，而是圖像與說明文的發布節奏，所以它把 astronomy mediation itself 當成 material。",
+          "explanation length 被當成主輸入，讓文字密度而非影像像素決定主要聲學重量。",
+          "`media_type` 經過 hash 後變成 offset，意味著 image / video 等媒體類型會改變波形偏壓感。",
+        ],
+        context:
+          "這條軌道聽起來比較像被翻譯過的宇宙。它強調的是 science communication 作為一種感知裝置，而不是單純的星體真實。",
+        ecology:
+          "宇宙敘事尺度；適合和 DONKI、Exoplanets 對照『量測』『通知』『敘事』三種太空資料形態。",
+      },
+      {
+        title: "系外行星 / NASA Exoplanets",
+        subtitle: "catalog archive through proxy access",
+        figure: "exoplanets",
+        scope: "深空資料庫 / deep-space archive",
+        access: "TAP query via r.jina.ai proxy",
+        cadence: "30 min cache",
+        endpoint:
+          "http://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select top 120 ... from pscomppars order by disc_year desc&format=json",
+        fields: ["pl_bmasse", "pl_orbper", "disc_year"],
+        mapping:
+          "mass -> frequency / amplitude, orbital period -> duration / modulation, discovery year -> phase / offset / envelope",
+        facts: [
+          "archive 透過 `r.jina.ai` 代理讀取，因為原始 TAP endpoint 在瀏覽器環境下不夠直接好用，這也讓 transport layer 成為作品的一部分。",
+          "質量先做 `log-scaled normalization`，避免巨大質量範圍把聲音直接壓扁。",
+          "資料按 `disc_year` 排序，所以你實際上是在聽 exoplanet discovery history 與 orbital scale 的疊合。",
+        ],
+        context:
+          "Exoplanets 是最遠的一層，但它並不抽象。它把發現年份、質量和軌道週期轉成同一個聆聽界面，讓深空資料庫也變成一種環境。",
+        ecology:
+          "深空尺度；是這張生態地圖的最外圈，負責把地球內部與地球外部放在同一個比較系統中。",
+      },
+    ],
+  },
+];
+---
+
+<section class="overlay-panel" id="api-noise-panel" aria-hidden="true">
+  <button
+    class="overlay-panel-backdrop"
+    type="button"
+    data-overlay-close
+    aria-label="Close API atlas"></button>
+
+  <div class="overlay-panel-shell">
+    <header class="overlay-panel-head">
+      <div>
+        <div class="control-label">api atlas / 生態資料地圖</div>
+        <p>依尺度排列資料源，從校園到深空。每張卡片都補上 access pattern、facts、context 與聲音映射。</p>
+      </div>
+      <button class="btn overlay-panel-close" type="button" data-overlay-close>
+        關閉 / Close
+      </button>
+    </header>
+
+    <div class="overlay-panel-body">
+      <article class="overlay-panel-content">
+        <div class="notes-layout notes-layout--atlas">
+          <aside class="notes-aside">
+            <div class="notes-panel-shell">
+              <div class="control-label">reading guide / 讀法</div>
+              <h2>Ecological order</h2>
+              <p>
+                這裡不是照 API 類型排序，而是照「資料所描繪的環境尺度」排序。
+                由最小的固定 site 開始，逐步放大到 city, island, global network, cosmic archive。
+              </p>
+              <div class="notes-chip-row">
+                <span class="notes-chip"><code>live -> snapshot fallback</code></span>
+                <span class="notes-chip"><code>source-specific mapping</code></span>
+                <span class="notes-chip">illustrated cards</span>
+              </div>
+            </div>
+
+            <nav class="notes-panel-shell notes-nav" aria-label="API atlas sections">
+              <div class="control-label">scale index / 尺度索引</div>
+              {sections.map(section => (
+                <a href={`#${section.id}`}>
+                  <span>{section.title}</span>
+                  <small>{section.range}</small>
+                </a>
+              ))}
+            </nav>
+          </aside>
+
+          <div class="notes-content">
+            {sections.map(section => (
+              <section class="scale-section" id={section.id}>
+                <div class="scale-section-head">
+                  <div>
+                    <div class="control-label">range / 範圍</div>
+                    <h2>{section.title}</h2>
+                  </div>
+                  <div class="scale-range">{section.range}</div>
+                </div>
+                <p class="scale-intro">{section.intro}</p>
+
+                <div class="source-grid">
+                  {section.sources.map(card => (
+                    <article class="source-card">
+                      <div class="source-card-top">
+                        <SourceFigure kind={card.figure} />
+
+                        <div class="source-card-head">
+                          <div class="source-scope">{card.scope}</div>
+                          <h3>{card.title}</h3>
+                          <p>{card.subtitle}</p>
+                          <div class="notes-chip-row">
+                            <span class="notes-chip">{card.access}</span>
+                            <span class="notes-chip">{card.cadence}</span>
+                            <span class="notes-chip"><code>sonified fields</code> {card.fields.length}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="source-meta-grid">
+                        <div>
+                          <span>endpoint</span>
+                          <strong><code>{card.endpoint}</code></strong>
+                        </div>
+                        <div>
+                          <span>fields</span>
+                          <strong class="source-inline-code-row">
+                            {card.fields.map((field, index) => (
+                              <span class="source-inline-code-item">
+                                {index > 0 && <span>/</span>}
+                                <code>{field}</code>
+                              </span>
+                            ))}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>mapping</span>
+                          <strong><code>{card.mapping}</code></strong>
+                        </div>
+                        <div>
+                          <span>ecology</span>
+                          <strong>{card.ecology}</strong>
+                        </div>
+                      </div>
+
+                      <section class="source-card-section">
+                        <div class="source-section-title">facts / 關鍵事實</div>
+                        <ul class="source-list">
+                          {card.facts.map(fact => <li set:html={rich(fact)}></li>)}
+                        </ul>
+                      </section>
+
+                      <section class="source-card-section">
+                        <div class="source-section-title">context / 為什麼放在這裡</div>
+                        <p set:html={rich(card.context)}></p>
+                      </section>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,87 @@
+---
+import ChannelHelpPanel from "./ChannelHelpPanel.astro";
+import ArchitecturePanel from "./ArchitecturePanel.astro";
+import ApiNoisePanel from "./ApiNoisePanel.astro";
+---
+
+<section id="track-board">
+  <div class="workspace-grid">
+    <section class="board-main">
+      <div class="board-main-head">
+        <div class="board-main-copy">
+          <div class="control-label">tracks / 軌道</div>
+          <p>資料源、聲音鏈、輸出設定。左右滑動瀏覽軌道。 / Source, synth chain, output.</p>
+        </div>
+
+        <div class="board-toolbar">
+          <div class="board-primary-actions">
+            <button class="btn track-add-btn" id="track-add-btn">
+              <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16">
+                  <path d="M8 3v10M3 8h10"></path>
+                </svg>
+              </span>
+              新增軌道 / Add Track
+            </button>
+            <button class="btn" id="track-play-all-btn">
+              <span class="btn-icon" aria-hidden="true">
+                <svg class="icon-fill" viewBox="0 0 16 16">
+                  <path d="M4 3.5v9l8-4.5z"></path>
+                </svg>
+              </span>
+              播放全部 / Play All
+            </button>
+            <button class="btn" id="track-stop-all-btn">
+              <span class="btn-icon" aria-hidden="true">
+                <svg class="icon-fill" viewBox="0 0 16 16">
+                  <rect x="4" y="4" width="8" height="8"></rect>
+                </svg>
+              </span>
+              停止全部 / Stop All
+            </button>
+            <span class="track-ch-badge" id="track-channel-info">— ch</span>
+          </div>
+
+          <div class="board-notes-actions">
+            <button class="btn" type="button" data-overlay-open="output-help-panel">
+              <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16">
+                  <path d="M3 10.5V5.5h3.2l3.3-2v9l-3.3-2z"></path>
+                  <path d="M11 6.2c1 .7 1.6 1.7 1.6 2.8S12 11.1 11 11.8"></path>
+                </svg>
+              </span>
+              輸出 FAQ / Output
+            </button>
+            <button class="btn" type="button" data-overlay-open="architecture-panel">
+              <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16">
+                  <rect x="2.5" y="2.5" width="4" height="4"></rect>
+                  <rect x="9.5" y="2.5" width="4" height="4"></rect>
+                  <rect x="6" y="9.5" width="4" height="4"></rect>
+                  <path d="M6.5 4.5h3M8 6.5v3"></path>
+                </svg>
+              </span>
+              系統圖譜 / System
+            </button>
+            <button class="btn" type="button" data-overlay-open="api-noise-panel">
+              <span class="btn-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16">
+                  <path d="M6 4 3.5 8 6 12"></path>
+                  <path d="M10 4 12.5 8 10 12"></path>
+                  <path d="M8.8 3.5 7.2 12.5"></path>
+                </svg>
+              </span>
+              API 地圖 / API
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="track-list"></div>
+    </section>
+  </div>
+
+  <ChannelHelpPanel />
+  <ArchitecturePanel />
+  <ApiNoisePanel />
+</section>

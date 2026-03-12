@@ -1,14 +1,8 @@
 import { magToFreq } from "./audio";
 import { state } from "./state";
 import type { Quake } from "./state";
-import { triggerQuake } from "./trigger";
-import { stopSequence } from "./sequencer";
 
 export async function fetchQuakes(): Promise<void> {
-    const statusPill = document.getElementById("status-pill")!;
-    statusPill.textContent = "loading";
-    statusPill.className = "status-pill";
-
     try {
         const res = await fetch(
             "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
@@ -17,13 +11,12 @@ export async function fetchQuakes(): Promise<void> {
 
         state.quakes = json.features
             .filter((f: any) => f.properties.mag !== null)
-            .sort((a: any, b: any) => b.properties.mag - a.properties.mag)
             .slice(0, 80)
             .map(
                 (f: any): Quake => ({
                     id: f.id,
                     mag: f.properties.mag,
-                    place: f.properties.place ?? "Unknown location",
+                    place: f.properties.place ?? "未知位置 / Unknown location",
                     depth: f.geometry.coordinates[2],
                     time: f.properties.time,
                     freq: magToFreq(f.properties.mag),
@@ -31,15 +24,13 @@ export async function fetchQuakes(): Promise<void> {
             );
 
         renderList();
-        statusPill.textContent = "live";
-        statusPill.className = "status-pill live";
-        document.getElementById("quake-count")!.textContent =
-            `${state.quakes.length} events`;
     } catch (e) {
         console.error(e);
-        statusPill.textContent = "error";
-        document.getElementById("quake-list")!.innerHTML =
-            '<div class="loading">failed to fetch — check console</div>';
+        const container = document.getElementById("quake-list");
+        if (container) {
+            container.innerHTML =
+                '<div class="loading">抓取失敗 / Failed to fetch</div>';
+        }
     }
 }
 
@@ -54,7 +45,8 @@ function magClass(mag: number): string {
 }
 
 export function renderList(): void {
-    const container = document.getElementById("quake-list")!;
+    const container = document.getElementById("quake-list");
+    if (!container) return;
     container.innerHTML = "";
     container.className = "";
 
@@ -75,11 +67,6 @@ export function renderList(): void {
         <div class="quake-freq">♩ ${q.freq.toFixed(1)} Hz</div>
       </div>
     `;
-
-        card.addEventListener("click", () => {
-            stopSequence();
-            triggerQuake(q);
-        });
 
         container.appendChild(card);
     }

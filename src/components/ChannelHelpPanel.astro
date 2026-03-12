@@ -1,0 +1,69 @@
+<section class="overlay-panel" id="output-help-panel" aria-hidden="true">
+  <button
+    class="overlay-panel-backdrop"
+    type="button"
+    data-overlay-close
+    aria-label="Close output help"></button>
+
+  <div class="overlay-panel-shell">
+    <header class="overlay-panel-head">
+      <div>
+        <div class="control-label">output faq / 輸出說明</div>
+        <p>為什麼只有 2 聲道，以及怎麼把不同軌道送到不同輸出。</p>
+      </div>
+      <button class="btn overlay-panel-close" type="button" data-overlay-close>
+        關閉 / Close
+      </button>
+    </header>
+
+    <div class="overlay-panel-body">
+      <article class="overlay-panel-content prose-block">
+        <p>
+          瀏覽器不會直接辨識每一顆實體喇叭的名字；它只能讀取目前
+          <code>audio output device</code> 提供的 <code>output channels</code>。
+          所以這個專案做的是 <code>discrete channel routing</code>，
+          不是裝置辨識。
+        </p>
+
+        <p>
+          如果畫面上只顯示 <code>2 ch</code>，通常代表目前系統輸出仍是 stereo。
+          這不是 app 算錯，而是 macOS / audio device 的 routing 還沒有切到多聲道輸出。
+        </p>
+
+        <h2>如何取得更多輸出聲道 / Getting More Channels</h2>
+        <ol>
+          <li>打開 <strong>Audio MIDI Setup</strong></li>
+          <li>點左下角 <strong>+</strong>，建立 <em>Aggregate Device</em></li>
+          <li>勾選要合併的輸出設備，例如內建輸出、USB 介面、BlackHole</li>
+          <li>到 <strong>System Settings → Sound</strong> 把它設成輸出</li>
+        </ol>
+
+        <p>
+          建立完成後，重新播放任一 track，系統會依照
+          <code>destination.maxChannelCount</code> 讀取可用聲道數，
+          並把每條 track 送往對應的 <code>outputChannel</code>。
+        </p>
+
+        <h2>這個專案怎麼分軌 / How Routing Works</h2>
+        <pre><code class="language-txt">source
+  -> GainNode
+  -> AnalyserNode
+  -> ChannelMergerNode[input = outputChannel]
+  -> destination</code></pre>
+
+        <p>
+          你可以在每條 track 的主控制區直接改 <code>Output</code>，不需要打開細節面板。
+        </p>
+
+        <p>
+          如果需要 8 聲道以上或穩定展演，建議直接使用多輸出 audio interface。
+          Apple 官方文件可參考
+          <a
+            href="https://support.apple.com/en-gb/guide/audio-midi-setup/ams2a518af5/mac"
+            target="_blank"
+            rel="noopener">Audio MIDI Setup guide ↗</a>。
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
